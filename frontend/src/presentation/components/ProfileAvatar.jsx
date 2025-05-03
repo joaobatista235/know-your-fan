@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Box,
   Avatar,
@@ -9,13 +9,14 @@ import {
   useToast,
 } from '@chakra-ui/react'
 import { FiCamera } from 'react-icons/fi'
+import { userService } from '../../services/api'
 
 /**
  * ProfileAvatar component with image upload functionality
  * 
  * @param {Object} props
- * @param {string} props.src - Current avatar image source
- * @param {Function} props.onImageChange - Function called when image is changed
+ * @param {string} props.src - Current avatar image source (base64 data)
+ * @param {Function} props.onImageChange - Function called when image is changed, passes (base64Image, base64Image)
  * @param {string} props.name - User's name for fallback
  * @param {string} props.size - Avatar size (sm, md, lg, xl, 2xl)
  */
@@ -27,8 +28,43 @@ export const ProfileAvatar = ({
 }) => {
   const { colorMode } = useColorMode()
   const [hovering, setHovering] = useState(false)
+  const [localSrc, setLocalSrc] = useState(src)
   const fileInputRef = useRef(null)
   const toast = useToast()
+  const avatarAttr = {
+    bg: colorMode === 'dark' ? '#141414' : 'white',
+    color: colorMode === 'dark' ? 'white' : '#141414',
+  }
+
+  // Load profile image if not provided as prop
+  useEffect(() => {
+    const loadProfileImage = async () => {
+      if (!src) {
+        try {
+          const base64Image = await userService.getProfileImage();
+          if (base64Image) {
+            setLocalSrc(base64Image);
+            // Also pass it to parent component if provided
+            if (onImageChange) {
+              // Pass the same base64 string for both parameters for consistency
+              onImageChange(base64Image, base64Image);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading profile image:', error);
+        }
+      }
+    };
+    
+    loadProfileImage();
+  }, [src, onImageChange]);
+
+  // Update local source when prop changes
+  useEffect(() => {
+    if (src) {
+      setLocalSrc(src);
+    }
+  }, [src]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0]
@@ -45,9 +81,24 @@ export const ProfileAvatar = ({
       return
     }
 
+    const maxSize = 2 * 1024 * 1024
+    if (file.size > maxSize) {
+      toast({
+        title: 'Arquivo muito grande',
+        description: 'A imagem deve ter no máximo 2MB.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      })
+      return
+    }
+
     const reader = new FileReader()
     reader.onload = (event) => {
-      onImageChange && onImageChange(event.target.result)
+      const base64Image = event.target.result;
+      setLocalSrc(base64Image);
+      // Pass the base64 data to the parent component
+      onImageChange && onImageChange(base64Image, base64Image)
     }
     reader.readAsDataURL(file)
   }
@@ -64,12 +115,12 @@ export const ProfileAvatar = ({
         onMouseLeave={() => setHovering(false)}
       >
         <Avatar
-          src={src}
+          src={localSrc}
           name={name}
           size={size}
           border="3px solid"
           borderColor="brand.primary"
-          bg={colorMode === 'dark' ? 'brand.gray.dark' : 'gray.100'}
+          {...avatarAttr}
         />
         
         <IconButton

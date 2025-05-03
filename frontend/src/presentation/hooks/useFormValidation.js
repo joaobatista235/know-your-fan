@@ -13,35 +13,29 @@ export const useFormValidation = (initialValues = {}, validationRules = {}) => {
   const [touched, setTouched] = useState({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Validate a single field
   const validateField = useCallback((name, value) => {
     if (!validationRules[name]) return ''
     
     const fieldRules = validationRules[name]
     
-    // Required validation
     if (fieldRules.required && (!value || value === '')) {
       return fieldRules.required === true 
         ? 'Este campo é obrigatório' 
         : fieldRules.required
     }
     
-    // Min length validation
     if (fieldRules.minLength && value && value.length < fieldRules.minLength.value) {
       return fieldRules.minLength.message || `Mínimo de ${fieldRules.minLength.value} caracteres`
     }
     
-    // Max length validation
     if (fieldRules.maxLength && value && value.length > fieldRules.maxLength.value) {
       return fieldRules.maxLength.message || `Máximo de ${fieldRules.maxLength.value} caracteres`
     }
     
-    // Pattern validation
     if (fieldRules.pattern && value && !fieldRules.pattern.value.test(value)) {
       return fieldRules.pattern.message || 'Formato inválido'
     }
     
-    // Custom validation
     if (fieldRules.validate && typeof fieldRules.validate === 'function') {
       const customError = fieldRules.validate(value, values)
       if (customError) return customError
@@ -50,7 +44,6 @@ export const useFormValidation = (initialValues = {}, validationRules = {}) => {
     return ''
   }, [validationRules, values])
 
-  // Validate all fields
   const validateForm = useCallback(() => {
     const newErrors = {}
     let isValid = true
@@ -67,7 +60,6 @@ export const useFormValidation = (initialValues = {}, validationRules = {}) => {
     return isValid
   }, [validateField, values, validationRules])
 
-  // Handle input change
   const handleChange = useCallback((e) => {
     const { name, value } = e.target
     

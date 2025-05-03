@@ -13,7 +13,6 @@ import {
 } from '@chakra-ui/react'
 import { FiBell, FiLock, FiSun, FiMoon, FiTrash2, FiSave } from 'react-icons/fi'
 
-// Components
 import { PageHeader } from '../components/PageHeader'
 import { FormCard } from '../components/FormCard'
 
@@ -38,7 +37,6 @@ export const Settings = () => {
   const handleSave = async () => {
     setIsSubmitting(true)
     
-    // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000))
     
     toast({

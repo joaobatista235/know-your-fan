@@ -2,9 +2,7 @@ import { Box, Grid, Heading, Text, Button, Icon, Card, CardBody, useColorMode } 
 import { FiUser, FiShare2, FiUpload } from 'react-icons/fi'
 import { Link } from 'react-router-dom'
 
-const DashboardCard = ({ icon, title, path }) => {
-  const { colorMode } = useColorMode()
-  
+const DashboardCard = ({ icon, title, path }) => {  
   return (
     <Card 
       borderRadius="lg"

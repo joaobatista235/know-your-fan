@@ -1,12 +1,26 @@
-import { Box, VStack, Text, Image, useColorMode } from '@chakra-ui/react'
-import { Link, useLocation } from 'react-router-dom'
+import { Box, VStack, Text, Image, useColorMode, useToast } from '@chakra-ui/react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { FiHome, FiUser, FiShare2, FiUpload, FiCalendar, FiSettings, FiLogOut } from 'react-icons/fi'
-import { styles } from '../styles/Layout.styles'
 import FuriaLogo from '../../assets/furia-logo.png'
+import { authService } from '../../services/api'
 
 export const Sidebar = ({ isOpen }) => {
   const location = useLocation()
   const { colorMode } = useColorMode()
+  const navigate = useNavigate()
+  const toast = useToast()
+
+  const handleLogout = () => {
+    authService.logout();
+    toast({
+      title: 'Logout realizado com sucesso',
+      status: 'success',
+      duration: 2000,
+      isClosable: true,
+      position: 'top'
+    })
+    navigate('/auth')
+  }
 
   const menuItems = [
     { icon: FiHome, text: 'Início', path: '/' },
@@ -15,15 +29,14 @@ export const Sidebar = ({ isOpen }) => {
     { icon: FiUpload, text: 'Upload de Documentos', path: '/documents' },
     { icon: FiCalendar, text: 'Histórico de Eventos', path: '/events' },
     { icon: FiSettings, text: 'Configurações', path: '/settings' },
-    { icon: FiLogOut, text: 'Sair', path: '/logout' },
   ]
 
   const sidebarBg = colorMode === 'dark' ? '#141414' : '#FFFFFF'
   const borderColor = colorMode === 'dark' ? 'whiteAlpha.100' : 'gray.200'
 
   return (
-    <Box 
-      as="aside" 
+    <Box
+      as="aside"
       width={{ base: '280px', md: '280px' }}
       bg={sidebarBg}
       borderRight="1px solid"
@@ -37,9 +50,11 @@ export const Sidebar = ({ isOpen }) => {
       zIndex={20}
       overflowY="auto"
       boxShadow={isOpen ? { base: '4px 0 8px rgba(0, 0, 0, 0.3)', md: 'none' } : 'none'}
+      display="flex"
+      flexDirection="column"
     >
       <Link to="/">
-        <Box 
+        <Box
           p={6}
           pl={{ base: 14, md: 6 }}
           borderBottom="1px solid"
@@ -56,7 +71,7 @@ export const Sidebar = ({ isOpen }) => {
         </Box>
       </Link>
 
-      <VStack as="nav" py={4} spacing={1} align="stretch">
+      <VStack as="nav" py={4} spacing={1} align="stretch" flex="1">
         {menuItems.map((item) => (
           <Link key={item.path} to={item.path}>
             <Box
@@ -85,6 +100,30 @@ export const Sidebar = ({ isOpen }) => {
           </Link>
         ))}
       </VStack>
+
+      <Box
+        mt="auto"
+        mb={6}
+        onClick={handleLogout}
+        cursor="pointer"
+      >
+        <Box
+          display="flex"
+          alignItems="center"
+          gap={3}
+          px={6}
+          py={3}
+          color={colorMode === 'dark' ? 'gray.300' : 'gray.700'}
+          transition="all 0.2s"
+          _hover={{
+            bg: colorMode === 'dark' ? 'whiteAlpha.100' : 'gray.100',
+            color: colorMode === 'dark' ? 'white' : 'black',
+          }}
+        >
+          <Box as={FiLogOut} fontSize="20px" flexShrink={0} />
+          <Text>Sair</Text>
+        </Box>
+      </Box>
     </Box>
   )
 } 
