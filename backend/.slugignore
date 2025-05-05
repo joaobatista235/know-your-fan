@@ -1,0 +1,8 @@
+setup.py
+firebase-service-account.json
+*.pyc
+__pycache__/
+tests/
+.pytest*
+.git/
+.gitignore 

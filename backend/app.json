@@ -1,0 +1,17 @@
+{
+  "name": "know-your-fan-api",
+  "description": "API for Know Your Fan application",
+  "repository": "https://github.com/your-username/know-your-fan",
+  "keywords": ["python", "flask", "api"],
+  "env": {
+    "ENVIRONMENT": {
+      "description": "Environment setting for the application",
+      "value": "production"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+} 
