@@ -20,6 +20,48 @@ except Exception as e:
     print(f"Error initializing Firestore client: {e}")
     db = None
 
+def _format_user_response(uid: str, user_data: Dict[str, Any] = None, fan_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    user = auth.get_user(uid)
+    
+    response_data = {
+        "uid": uid,
+        "email": user.email,
+        "display_name": user.display_name,
+        "email_verified": user.email_verified,
+    }
+    
+    if not fan_data:
+        response_data["profileComplete"] = False
+        return response_data
+    
+    if fan_data.get('has_profile_image') == True:
+        response_data['has_profile_image'] = True
+    
+    for key, value in fan_data.items():
+        if key not in ['user_id', 'created_at', 'updated_at', 'address', 'profile_image_base64']:
+            response_data[key] = value
+    
+    if 'address' in fan_data and fan_data['address']:
+        address = fan_data['address']
+        response_data['street'] = address.get('street')
+        response_data['number'] = address.get('number')
+        response_data['complement'] = address.get('complement')
+        response_data['neighborhood'] = address.get('neighborhood')
+        response_data['city'] = address.get('city')
+        response_data['state'] = address.get('state')
+        response_data['cep'] = address.get('postal_code')
+    
+    if 'birth_date' in fan_data:
+        response_data['date_of_birth'] = fan_data['birth_date']
+        
+    if 'name' in fan_data and not response_data.get('display_name'):
+        response_data['display_name'] = fan_data['name']
+    
+    required_fields = ['cpf', 'date_of_birth', 'street', 'city', 'state', 'cep']
+    response_data["profileComplete"] = all(field in response_data and response_data[field] for field in required_fields)
+    
+    return response_data
+
 def update_user_profile(uid: str, profile_data: Dict[str, Any], profile_image=None) -> Dict[str, Any]:
     try:
         auth_update = {}
@@ -37,23 +79,16 @@ def update_user_profile(uid: str, profile_data: Dict[str, Any], profile_image=No
                 print(f"Cached profile image for user {uid}")
             
             user = auth.get_user(uid)
-            
-            response_data = {
-                "uid": uid,
-                "email": user.email,
-                "display_name": user.display_name,
-                "email_verified": user.email_verified,
-                "profileComplete": True,
-            }
+            response_data = _format_user_response(uid)
             
             if profile_image:
                 response_data['has_profile_image'] = True
                 
-            # Add flattened profile data
             for key, value in profile_data.items():
                 if value is not None:
                     response_data[key] = value
-                    
+            
+            response_data["profileComplete"] = True
             return response_data
         
         fan_ref = db.collection('fans').document(uid)
@@ -99,7 +134,6 @@ def update_user_profile(uid: str, profile_data: Dict[str, Any], profile_image=No
                     fan_data['profile_image_base64'] = base64_content
                     fan_data['has_profile_image'] = True
                     print(f"Profile image stored successfully in Firestore ({estimated_size} bytes)")
-                    
                     profile_image_cache[uid] = base64_content
             except Exception as img_error:
                 print(f"Error processing profile image: {img_error}")
@@ -136,35 +170,7 @@ def update_user_profile(uid: str, profile_data: Dict[str, Any], profile_image=No
             fan_ref.set(fan_data)
         
         updated_fan = fan_ref.get().to_dict()
-        
-        user = auth.get_user(uid)
-        
-        response_data = {
-            "uid": uid,
-            "email": user.email,
-            "display_name": user.display_name,
-            "email_verified": user.email_verified,
-            "profileComplete": True,
-        }
-        
-        if updated_fan.get('has_profile_image') == True:
-            response_data['has_profile_image'] = True
-        
-        for key, value in updated_fan.items():
-            if key not in ['user_id', 'created_at', 'updated_at', 'address', 'profile_image_base64']:
-                response_data[key] = value
-        
-        if 'address' in updated_fan and updated_fan['address']:
-            address = updated_fan['address']
-            response_data['street'] = address.get('street')
-            response_data['number'] = address.get('number')
-            response_data['complement'] = address.get('complement')
-            response_data['neighborhood'] = address.get('neighborhood')
-            response_data['city'] = address.get('city')
-            response_data['state'] = address.get('state')
-            response_data['cep'] = address.get('postal_code')
-        
-        return response_data
+        return _format_user_response(uid, profile_data, updated_fan)
     except Exception as e:
         print(f"Error updating user profile: {e}")
         raise ValueError(f"Failed to update user profile: {str(e)}")
@@ -193,4 +199,24 @@ def get_user_profile_image(uid: str) -> str:
         return None
     except Exception as e:
         print(f"Error getting profile image: {e}")
-        return None 
+        return None
+
+def get_user_profile(uid: str) -> Dict[str, Any]:
+    try:
+        if db is None:
+            print("Firestore database is not available. Only basic profile data will be returned.")
+            return _format_user_response(uid)
+        
+        fan_ref = db.collection('fans').document(uid)
+        fan_doc = fan_ref.get()
+        
+        if not fan_doc.exists:
+            print(f"No fan document exists for user {uid}")
+            return _format_user_response(uid)
+            
+        fan_data = fan_doc.to_dict()
+        return _format_user_response(uid, None, fan_data)
+        
+    except Exception as e:
+        print(f"Error getting user profile: {e}")
+        raise ValueError(f"Failed to get user profile: {str(e)}") 

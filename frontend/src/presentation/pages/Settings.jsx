@@ -1,4 +1,4 @@
-import { useState } from 'react'
+// import { useState } from 'react'
 import {
   Box,
   VStack,
@@ -18,37 +18,37 @@ import { FormCard } from '../components/FormCard'
 
 export const Settings = () => {
   const { colorMode, toggleColorMode } = useColorMode()
-  const [settings, setSettings] = useState({
-    emailNotifications: true,
-    pushNotifications: true,
-    profilePrivacy: 'public',
-  })
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  // const [settings, setSettings] = useState({
+  //   emailNotifications: true,
+  //   pushNotifications: true,
+  //   profilePrivacy: 'public',
+  // })
+  // const [isSubmitting, setIsSubmitting] = useState(false)
 
   const toast = useToast()
 
-  const handleChange = (field, value) => {
-    setSettings(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
+  // const handleChange = (field, value) => {
+  //   setSettings(prev => ({
+  //     ...prev,
+  //     [field]: value
+  //   }))
+  // }
 
-  const handleSave = async () => {
-    setIsSubmitting(true)
+  // const handleSave = async () => {
+  //   setIsSubmitting(true)
     
-    await new Promise(resolve => setTimeout(resolve, 1000))
+  //   await new Promise(resolve => setTimeout(resolve, 1000))
     
-    toast({
-      title: 'Configurações salvas',
-      description: 'Suas preferências foram atualizadas com sucesso.',
-      status: 'success',
-      duration: 3000,
-      isClosable: true,
-    })
+  //   toast({
+  //     title: 'Configurações salvas',
+  //     description: 'Suas preferências foram atualizadas com sucesso.',
+  //     status: 'success',
+  //     duration: 3000,
+  //     isClosable: true,
+  //   })
     
-    setIsSubmitting(false)
-  }
+  //   setIsSubmitting(false)
+  // }
 
   const handleDeleteAccount = () => {
     toast({
@@ -68,7 +68,7 @@ export const Settings = () => {
       />
 
       <VStack spacing={6} align="stretch">
-        {/* Notifications */}
+        {/* Notifications
         <FormCard
           title="Notificações"
           icon={FiBell}
@@ -91,10 +91,10 @@ export const Settings = () => {
               />
             </FormControl>
           </VStack>
-        </FormCard>
+        </FormCard> */}
 
         {/* Privacy */}
-        <FormCard
+        {/* <FormCard
           title="Privacidade"
           icon={FiLock}
         >
@@ -109,7 +109,7 @@ export const Settings = () => {
               <option value="private">Privado</option>
             </Select>
           </FormControl>
-        </FormCard>
+        </FormCard> */}
 
         {/* Theme */}
         <FormCard
@@ -159,8 +159,8 @@ export const Settings = () => {
           <Button variant="ghost">Cancelar</Button>
           <Button 
             variant="primary" 
-            onClick={handleSave} 
-            isLoading={isSubmitting}
+            // onClick={handleSave} 
+            // isLoading={isSubmitting}
             loadingText="Salvando..."
             leftIcon={<FiSave />}
           >

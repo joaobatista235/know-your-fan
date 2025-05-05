@@ -1,2 +1,0 @@
-# Repository implementations
-from .firestore_fan_repository import FirestoreFanRepository 

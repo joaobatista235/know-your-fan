@@ -66,7 +66,9 @@ export const Auth = () => {
 
     try {
       if (showLogin) {
-        await authService.login(email, password);
+        // Autenticação com email/senha
+        const loginEmail = email.trim().toLowerCase();
+        await authService.login(loginEmail, password);
 
         toast({
           title: 'Login realizado com sucesso',
@@ -76,9 +78,14 @@ export const Auth = () => {
           position: 'top',
         });
 
-        navigate('/');
+        // Redirecionar para o perfil após login bem-sucedido
+        setTimeout(() => {
+          window.location.href = '/profile';
+        }, 1000);
       } else {
-        await authService.register({ name, email, password });
+        // Registrar novo usuário
+        const registerEmail = email.trim().toLowerCase();
+        await authService.register({ name, email: registerEmail, password });
 
         toast({
           title: 'Cadastro realizado com sucesso',
@@ -89,7 +96,10 @@ export const Auth = () => {
           position: 'top',
         });
 
-        navigate('/profile');
+        // Redirecionar para o perfil após registro bem-sucedido
+        setTimeout(() => {
+          window.location.href = '/profile';
+        }, 1000);
       }
     } catch (error) {
       console.error('Erro de autenticação:', error);

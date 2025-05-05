@@ -2,13 +2,17 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import logging
 from firebase_admin.exceptions import FirebaseError
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-CORS(app)
+
+# Configuração CORS mais segura
+allowed_origins = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
+CORS(app, resources={r"/*": {"origins": allowed_origins}})
 
 # Global error handlers
 @app.errorhandler(FirebaseError)
@@ -38,4 +42,5 @@ from src.main.routes import setup_routes
 setup_routes(app)
 
 if __name__ == "__main__":
+    # Usar configuração do run.py em produção
     app.run(debug=True, host="0.0.0.0", port=5000) 

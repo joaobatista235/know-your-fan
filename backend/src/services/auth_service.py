@@ -5,28 +5,9 @@ import requests
 import json
 from typing import Dict, Any
 from firebase_admin.exceptions import FirebaseError
+from src.config.firebase import initialize_firebase
 
-def initialize_firebase():
-    try:
-        if not firebase_admin._apps:
-            service_account_path = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
-            
-            if not service_account_path:
-                default_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-                                         'firebase-service-account.json')
-                if os.path.exists(default_path):
-                    service_account_path = default_path
-                else:
-                    raise ValueError("Firebase service account file not found")
-            
-            cred = credentials.Certificate(service_account_path)
-            firebase_admin.initialize_app(cred)
-            print("Firebase initialized successfully")
-    except Exception as e:
-        print(f"Error initializing Firebase: {e}")
-        raise
-
-# Initialize Firebase on module import
+# Inicializa o Firebase usando nossa configuração baseada em variáveis de ambiente
 initialize_firebase()
 
 def get_firebase_web_api_key():
@@ -46,10 +27,8 @@ def register_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
                 email_verified=False
             )
             
-            # Create custom JWT token
             token = auth.create_custom_token(user.uid)
             
-            # Remove password from response
             user_data.pop('password')
             
             return {
@@ -77,10 +56,8 @@ def login_user(email: str, password: str) -> Dict[str, Any]:
             print(f"Error getting user by email: {e}")
             raise ValueError("Invalid email or password")
             
-        # Create custom JWT token for the user
         token = auth.create_custom_token(user.uid)
         
-        # Try to check if user has completed their profile
         profile_complete = False
         try:
             from firebase_admin import firestore
@@ -90,11 +67,9 @@ def login_user(email: str, password: str) -> Dict[str, Any]:
             
             if fan_doc.exists:
                 fan_data = fan_doc.to_dict()
-                # Profile is complete if it has the required fields
                 required_fields = ['name', 'cpf', 'birth_date']
                 profile_complete = all(field in fan_data for field in required_fields)
         except Exception as e:
-            # If Firestore check fails, assume profile is not complete
             print(f"Error checking profile completeness: {e}")
             profile_complete = False
         
@@ -111,27 +86,10 @@ def login_user(email: str, password: str) -> Dict[str, Any]:
         raise ValueError("Invalid email or password")
 
 def verify_token(token: str) -> Dict[str, Any]:
-    """
-    Verify a Firebase token and return user information
-    
-    For custom tokens, we'd normally need to exchange them for ID tokens
-    first, but for simplicity, we'll just decode and validate the structure.
-    
-    Args:
-        token: The Firebase token to verify
-        
-    Returns:
-        User data dictionary
-        
-    Raises:
-        ValueError: If token is invalid
-    """
     try:
         try:
-            # First try to verify as an ID token
             decoded_token = auth.verify_id_token(token)
             
-            # Get user
             user = auth.get_user(decoded_token['uid'])
             
             return {
@@ -141,19 +99,12 @@ def verify_token(token: str) -> Dict[str, Any]:
                 "email_verified": user.email_verified
             }
         except Exception as e:
-            # If ID token verification fails, this may be a custom token
-            # In a real app, you'd exchange custom token for ID token first
-            
-            # Check if token has valid structure (header.payload.signature)
             if not token or not isinstance(token, str) or token.count('.') != 2:
                 raise ValueError("Token has invalid format")
                 
             try:
-                # For demo purposes, try to find a user by examining the token
-                # This is NOT recommended for production!
                 user_lookup = None
                 
-                # Try to list users to find a match
                 for user in auth.list_users().iterate_all():
                     user_lookup = user
                     break

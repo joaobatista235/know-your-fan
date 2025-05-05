@@ -1,17 +1,20 @@
 import axios from 'axios';
 
-const API_URL = 'http://192.168.5.10:5000';
+const API_URL = 'http://localhost:5000';
 
+// Create axios instance with default configuration
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
-  }
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  },
 });
 
 const AUTH_CHANGE_EVENT = 'auth-state-changed';
 
-// Add a flag to prevent multiple logout calls when receiving 401 errors
 let isRefreshingToken = false;
 let isLoggingOut = false;
 
@@ -21,6 +24,12 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Add cache busting parameter to every request
+    const cacheBuster = Date.now();
+    const separator = config.url.includes('?') ? '&' : '?';
+    config.url = `${config.url}${separator}_cb=${cacheBuster}`;
+    
     return config;
   },
   (error) => Promise.reject(error)
@@ -29,95 +38,107 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Only handle 401 errors if not already logging out
-    if (error.response && error.response.status === 401 && !isLoggingOut) {
+    // Verificar se é um erro 401 e não vem dos endpoints relacionados ao Twitter/OAuth
+    if (error.response && 
+        error.response.status === 401 && 
+        !isLoggingOut &&
+        !error.config.url.includes('/api/oauth/') &&
+        !error.config.url.includes('/social-accounts/')) {
       isLoggingOut = true;
-      console.warn('Unauthorized access detected. Logging out...');
-      authService.logout();
-      isLoggingOut = false;
+      localStorage.clear();
+      window.location.href = '/auth';
     }
     return Promise.reject(error);
   }
 );
 
-const notifyAuthChange = (isAuthenticated) => {
-  setTimeout(() => {
-    window.dispatchEvent(new CustomEvent(AUTH_CHANGE_EVENT, { 
-      detail: { isAuthenticated } 
-    }));
-    
-    window.dispatchEvent(new Event('storage'));
-    
-    if (isAuthenticated) {
-      window.dispatchEvent(new Event('auth-refresh'));
-    }
-  }, 50);
+// Função simplificada para limpar cache
+const clearBrowserCaches = async () => {
+  if (window.caches) {
+    try {
+      const keys = await window.caches.keys();
+      for (let name of keys) {
+        await window.caches.delete(name);
+      }
+    } catch {} // eslint-disable-line no-empty
+  }
+  
+  try {
+    sessionStorage.clear();
+  } catch {} // eslint-disable-line no-empty
 };
 
-export const authService = {
+const authService = {
   login: async (email, password) => {
-    try {
-      const response = await api.post('/api/auth/login', { email, password });
-      if (response.data && response.data.user && response.data.user.token) {
-        localStorage.clear();
-        
-        localStorage.setItem('authToken', response.data.user.token);
-        localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('userData', JSON.stringify(response.data.user || {}));
-        localStorage.setItem('profileComplete', response.data.user?.profileComplete || 'false');
-        localStorage.setItem('tokenTimestamp', Date.now().toString());
-        
-        notifyAuthChange(true);
-        
-        return response.data;
-      }
+    // Limpar storage antes para evitar dados misturados
+    localStorage.clear();
+    
+    const response = await api.post('/api/auth/login', { email, password });
+    
+    if (response.data && response.data.user && response.data.user.token) {
+      // Armazenar token e dados básicos de autenticação
+      localStorage.setItem('authToken', response.data.user.token);
+      localStorage.setItem('userData', JSON.stringify(response.data.user));
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('tokenTimestamp', Date.now().toString());
+      localStorage.setItem('currentUserEmail', email);
+      localStorage.setItem('uid', response.data.user.uid || '');
       
-      return null;
-    } catch (error) {
-      console.error('Erro no login:', error.response?.data || error.message);
-      throw error;
+      // Despachar evento de autenticação
+      window.dispatchEvent(new CustomEvent(AUTH_CHANGE_EVENT, { 
+        detail: { isAuthenticated: true, email: email }
+      }));
     }
+    
+    return response.data;
   },
   
   register: async (userData) => {
+    // Limpar storage antes para evitar dados misturados
+    localStorage.clear();
+    
+    const formattedData = {
+      email: userData.email,
+      password: userData.password,
+      display_name: userData.name || userData.displayName,
+    };
+    
+    const response = await api.post('/api/auth/register', formattedData);
+    
+    if (response.data && response.data.user && response.data.user.token) {
+      // Armazenar token e dados básicos de autenticação
+      localStorage.setItem('authToken', response.data.user.token);
+      localStorage.setItem('userData', JSON.stringify(response.data.user));
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('tokenTimestamp', Date.now().toString());
+      localStorage.setItem('currentUserEmail', userData.email);
+      localStorage.setItem('uid', response.data.user.uid || '');
+      
+      // Despachar evento de autenticação
+      window.dispatchEvent(new CustomEvent(AUTH_CHANGE_EVENT, { 
+        detail: { isAuthenticated: true, email: userData.email }
+      }));
+    }
+    
+    return response.data;
+  },
+  
+  verifyToken: async () => {
+    const token = localStorage.getItem('authToken');
     try {
-      const formattedData = {
-        email: userData.email,
-        password: userData.password,
-        display_name: userData.name
-      };
-      
-      const response = await api.post('/api/auth/register', formattedData);
-      
-      if (response.data && response.data.user && response.data.user.token) {
-        localStorage.clear();
-        
-        localStorage.setItem('authToken', response.data.user.token);
-        localStorage.setItem('isAuthenticated', 'true');
-        localStorage.setItem('userData', JSON.stringify(response.data.user || {}));
-        localStorage.setItem('profileComplete', 'false');
-        localStorage.setItem('tokenTimestamp', Date.now().toString());
-        
-        notifyAuthChange(true);
-        
-        return response.data;
-      }
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro no cadastro:', error.response?.data || error.message);
-      throw error;
+      const response = await api.post('/api/auth/verify', { token });
+      return response.data && response.data.valid;
+    } catch {
+      localStorage.clear();
+      return false;
     }
   },
   
   logout: () => {
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('userData');
-    localStorage.removeItem('profileComplete');
-    localStorage.removeItem('tokenTimestamp');
-    
-    notifyAuthChange(false);
+    isLoggingOut = true;
+    localStorage.clear();
+    clearBrowserCaches();
+    window.location.href = '/auth';
   },
   
   isAuthenticated: () => {
@@ -128,19 +149,16 @@ export const authService = {
       return false;
     }
     
-    // Check if token has the right format
     const isValidFormat = token && typeof token === 'string' && token.split('.').length === 3;
     if (!isValidFormat) {
       return false;
     }
-    
-    // Check token expiration (if it's older than 12 hours, consider it expired)
+
     const tokenTimestamp = parseInt(localStorage.getItem('tokenTimestamp') || '0', 10);
     const now = Date.now();
-    const MAX_TOKEN_AGE = 12 * 60 * 60 * 1000; // 12 hours in milliseconds
+    const MAX_TOKEN_AGE = 12 * 60 * 60 * 1000;
     
     if (now - tokenTimestamp > MAX_TOKEN_AGE) {
-      // Token is too old, clear auth state
       authService.logout();
       return false;
     }
@@ -149,7 +167,6 @@ export const authService = {
   },
   
   refreshAuthState: async () => {
-    // Skip if already refreshing or not authenticated
     if (isRefreshingToken || !authService.isAuthenticated()) {
       return false;
     }
@@ -157,25 +174,22 @@ export const authService = {
     try {
       isRefreshingToken = true;
       
-      // Verify the token with the backend
       const token = localStorage.getItem('authToken');
+      
       const response = await api.post('/api/auth/verify', { token });
       
       if (response.data && response.data.valid) {
-        // Update the token timestamp
         localStorage.setItem('tokenTimestamp', Date.now().toString());
         isRefreshingToken = false;
         return true;
       } else {
-        // Token is invalid, logout
         authService.logout();
         isRefreshingToken = false;
         return false;
       }
-    } catch (error) {
-      console.error('Error refreshing auth state:', error);
+    } catch {
       isRefreshingToken = false;
-      return authService.isAuthenticated(); // Still return current auth state
+      return authService.isAuthenticated();
     }
   },
   
@@ -199,125 +213,259 @@ export const authService = {
   AUTH_CHANGE_EVENT
 };
 
-export const userService = {
+const userService = {
   updateProfile: async (profileData) => {
+    // Verificar se temos uma imagem de perfil grande
+    let useFormData = false;
+    let profileImage = null;
+    
+    if (profileData.profileImage) {
+      // Se temos uma imagem, extrair e enviar separadamente
+      profileImage = profileData.profileImage;
+      delete profileData.profileImage;
+      useFormData = true;
+    }
+    
+    let response;
+    
+    if (useFormData) {
+      // Usar FormData para enviar a imagem grande
+      const formData = new FormData();
+      
+      // Adicionar os dados do perfil como JSON
+      formData.append('profileData', JSON.stringify(profileData));
+      
+      // Extrair a parte de dados da string base64
+      if (profileImage.includes(',')) {
+        const [header, data] = profileImage.split(',');
+        const mimeType = header.split(':')[1].split(';')[0];
+        
+        // Converter base64 para Blob
+        const binaryString = atob(data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: mimeType });
+        
+        // Adicionar a imagem como um arquivo
+        formData.append('profileImage', blob, 'profile-image.' + mimeType.split('/')[1]);
+      } else {
+        // Fallback se não tiver o formato esperado
+        formData.append('profileImageBase64', profileImage);
+      }
+      
+      // Enviar com o cabeçalho correto para FormData
+      response = await api.put('/api/users/profile', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+    } else {
+      // Método normal para dados sem imagem
+      response = await api.put('/api/users/profile', profileData);
+    }
+    
+    if (response.data && response.data.user) {
+      const userData = response.data.user;
+      localStorage.setItem('userData', JSON.stringify(userData));
+    }
+    
+    return response.data;
+  },
+  
+  getProfile: async (extraParams = '') => {
     try {
-      const response = await api.put('/api/users/profile', profileData);
+      const cacheBuster = Date.now();
+      const currentUserEmail = localStorage.getItem('currentUserEmail');
+      
+      let url = `/api/users/profile?_=${cacheBuster}`;
+      
+      if (currentUserEmail) {
+        url += `&email=${encodeURIComponent(currentUserEmail)}`;
+      }
+      
+      if (extraParams && extraParams.trim() !== '') {
+        const params = extraParams.startsWith('?') ? extraParams.substring(1) : extraParams;
+        url += `&${params}`;
+      }
+      
+      const response = await api.get(url);
       
       if (response.data && response.data.user) {
-        const userData = authService.getUserData() || {};
-        const updatedUserData = { ...userData, ...response.data.user };
+        const userData = response.data.user;
         
-        // If we sent an image with our update and the profile was marked as having an image
-        if (profileData.profileImage && response.data.user.has_profile_image) {
-          // Store the image in userData for offline access
-          updatedUserData.profileImage = profileData.profileImage;
+        if (currentUserEmail && userData.email !== currentUserEmail) {
+          throw new Error('Profile data mismatch');
         }
         
-        localStorage.setItem('userData', JSON.stringify(updatedUserData));
-        localStorage.setItem('profileComplete', 'true');
-        
-        notifyAuthChange(true);
-        
-        return response.data;
+        localStorage.setItem('userData', JSON.stringify(userData));
+        return userData;
       }
-      
       return null;
     } catch (error) {
-      console.error('Erro ao atualizar perfil:', error.response?.data || error.message);
-      
-      // Check if the error is related to Firestore being unavailable
-      if (error.response?.data?.error?.includes('Firestore database is not available') || 
-          error.response?.status === 503) {
-        
-        console.warn('Firestore unavailable. Using localStorage fallback for profile data.');
-        
-        // Fallback: Store profile data in localStorage
-        const userData = authService.getUserData() || {};
-        
-        // Create updated userData by merging existing with new profile data
-        const updatedUserData = { 
-          ...userData,
-          ...profileData,
-          profileComplete: true
-        };
-        
-        // If we have an image, store it directly in the userData
-        if (profileData.profileImage) {
-          updatedUserData.profileImage = profileData.profileImage;
-          updatedUserData.has_profile_image = true;
-        }
-        
-        // Store updated data
-        localStorage.setItem('userData', JSON.stringify(updatedUserData));
-        localStorage.setItem('profileComplete', 'true');
-        localStorage.setItem('usingLocalStorageFallback', 'true');
-        
-        // Notify that auth state changed
-        notifyAuthChange(true);
-        
-        // Return a mock response similar to what the API would return
-        return {
-          message: "Profile updated successfully (offline mode)",
-          user: updatedUserData
-        };
+      if (error.response && error.response.status === 404) {
+        return null;
       }
-      
       throw error;
     }
   },
   
-  getProfileImage: async () => {
+  getProfileImage: async (extraParams = '') => {
     try {
-      // First try to get from localStorage
-      const userData = authService.getUserData() || {};
+      const cacheBuster = Date.now();
+      const currentUserEmail = localStorage.getItem('currentUserEmail');
       
-      // Check if we have a profile image in userData
-      if (userData.profileImage) {
-        console.log('Using profile image from localStorage');
-        return userData.profileImage;
+      let url = `/api/users/profile/image?_=${cacheBuster}`;
+      
+      if (currentUserEmail) {
+        url += `&email=${encodeURIComponent(currentUserEmail)}`;
       }
       
-      // If not in localStorage and we're in fallback mode, return null
-      if (localStorage.getItem('usingLocalStorageFallback') === 'true') {
+      if (extraParams && extraParams.trim() !== '') {
+        const params = extraParams.startsWith('?') ? extraParams.substring(1) : extraParams;
+        url += `&${params}`;
+      }
+      
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      if (!userData.has_profile_image) {
         return null;
       }
       
-      // Otherwise try to get from the server
-      try {
-        const response = await api.get('/api/users/profile/image');
-        
-        if (response.data && response.data.profile_image) {
-          // Store the image in userData for future use
-          userData.profileImage = response.data.profile_image;
-          localStorage.setItem('userData', JSON.stringify(userData));
-          
-          return response.data.profile_image;
-        }
-      } catch (apiError) {
-        // If it's a 404, that's normal - user hasn't uploaded an image yet
-        if (apiError.response && apiError.response.status === 404) {
-          console.log('User has no profile image yet');
-          return null;
-        }
-        
-        // For other errors, rethrow
-        throw apiError;
+      const response = await api.get(url);
+      
+      if (response.data && response.data.profile_image) {
+        return response.data.profile_image;
+      }
+      
+      if (userData.profile_image) {
+        return userData.profile_image;
       }
       
       return null;
     } catch (error) {
-      console.error('Erro ao obter imagem do perfil:', error.response?.data || error.message);
+      console.error('Error fetching profile image:', error);
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      if (userData.profile_image) {
+        return userData.profile_image;
+      }
+      return null;
+    }
+  },
+  
+  analyzeDocument: async (data) => {
+    const requestData = data.document ? data : { document: data };
+    
+    const response = await api.post('/api/document/analyze', requestData);
+    return response.data;
+  },
+  
+  getSocialAccounts: async () => {
+    const response = await api.get('/api/users/social-accounts');
+    return response.data;
+  },
+  
+  getXRequestToken: async (callbackUrl) => {
+    const params = callbackUrl ? `?callback_url=${encodeURIComponent(callbackUrl)}` : '';
+    const response = await api.get(`/api/oauth/x/request-token${params}`);
+    return response.data;
+  },
+  
+  getXRequestTokenV2: async (callbackUrl) => {
+    // Use 127.0.0.1 por padrão se nenhum callbackUrl for fornecido
+    const defaultCallback = `http://127.0.0.1:5173/oauth/callback`;
+    const finalCallbackUrl = callbackUrl || defaultCallback;
+    console.log('Usando URL de callback para OAuth 2.0:', finalCallbackUrl);
+    
+    const params = finalCallbackUrl ? `?callback_url=${encodeURIComponent(finalCallbackUrl)}` : '';
+    const response = await api.get(`/api/oauth/x/v2/request-token${params}`);
+    return response.data;
+  },
+  
+  processXOAuth2Callback: async (code, state, redirect_uri) => {
+    try {
+      console.log('Processing OAuth 2.0 callback with parameters:');
+      console.log('Code:', code.substring(0, 10) + '...');
+      console.log('State:', state);
+      console.log('Redirect URI:', redirect_uri);
       
-      // If we're in fallback mode, try to get from localStorage
-      if (localStorage.getItem('usingLocalStorageFallback') === 'true') {
-        const userData = authService.getUserData() || {};
-        return userData.profileImage || null;
+      // Verifique o parâmetro state
+      const storedState = localStorage.getItem('x_oauth2_state');
+      console.log('Stored state:', storedState);
+      
+      if (state !== storedState) {
+        console.error('State mismatch:', { received: state, stored: storedState });
       }
       
-      return null;
+      const response = await api.post('/api/oauth/x/v2/callback', {
+        code,
+        state,
+        redirect_uri
+      });
+      
+      // Log completo de resposta para debug
+      console.log('X OAuth 2.0 callback response status:', response.status);
+      console.log('X OAuth 2.0 callback response data:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error processing X OAuth 2.0 callback:', error);
+      console.error('Error response:', error.response?.data);
+      throw error;
+    }
+  },
+  
+  connectSocialAccount: async (data) => {
+    const response = await api.post('/api/users/social-accounts/connect', data);
+    return response.data;
+  },
+  
+  disconnectSocialAccount: async (platform) => {
+    const response = await api.delete(`/api/users/social-accounts/${platform}`);
+    return response.data;
+  },
+  
+  getXCurrentUser: async () => {
+    try {
+      console.log('Attempting to retrieve current X user session...');
+      const response = await api.get('/api/oauth/x/v2/current-user');
+      console.log('X current user response received:', response.status);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting current X user:', error);
+      
+      // Provide a more detailed error message based on the status code
+      let errorMessage = 'Failed to get current user session';
+      
+      if (error.response) {
+        console.error('Error response data:', error.response.data);
+        // Server responded with a status code outside of 2xx range
+        switch (error.response.status) {
+          case 401:
+            errorMessage = 'Sessão expirada ou inválida';
+            break;
+          case 404:
+            errorMessage = 'Nenhuma conta do Twitter/X conectada';
+            break;
+          case 500:
+            errorMessage = 'Erro no servidor ao processar solicitação';
+            break;
+          default:
+            errorMessage = error.response.data?.error || errorMessage;
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Sem resposta do servidor. Verifique sua conexão.';
+      }
+      
+      return {
+        success: false,
+        error: errorMessage,
+        details: error.response?.data?.details || error.message
+      };
     }
   }
 };
 
+export { authService, userService };
 export default api; 

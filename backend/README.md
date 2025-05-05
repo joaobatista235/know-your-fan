@@ -50,6 +50,51 @@ Você precisa de um arquivo de credenciais do Firebase Service Account, que deve
 ### Variáveis de Ambiente
 - `FIREBASE_SERVICE_ACCOUNT`: Caminho para o arquivo de credenciais do Firebase.
 
+## Hospedagem do Backend
+
+### Preparação para hospedagem
+
+1. Configuração de variáveis de ambiente:
+   - Copie o arquivo `env.example` para `.env`
+   - Preencha todas as variáveis de ambiente necessárias
+   - **IMPORTANTE**: Nunca compartilhe ou cometa o arquivo `.env` no Git
+
+2. Segurança do Firebase:
+   - Em produção, use variáveis de ambiente para as credenciais do Firebase
+   - Remova ou proteja o arquivo `firebase-service-account.json`
+
+### Opções de hospedagem
+
+#### Render
+
+1. Crie uma conta em [Render](https://render.com)
+2. Crie um novo Web Service
+3. Configure:
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `gunicorn run:app`
+   - Adicione todas as variáveis de ambiente do arquivo `.env`
+
+#### Railway
+
+1. Crie uma conta em [Railway](https://railway.app)
+2. Crie um novo projeto a partir do GitHub
+3. Configure as variáveis de ambiente
+4. O deploy ocorrerá automaticamente
+
+#### Heroku
+
+1. Instale o Heroku CLI
+2. Faça login no Heroku: `heroku login`
+3. Crie um novo app: `heroku create know-your-fan-api`
+4. Configure as variáveis de ambiente: `heroku config:set ENVIRONMENT=production`
+5. Faça deploy: `git push heroku main`
+
+### Testando o deploy
+
+1. Verifique se a API está respondendo corretamente nos endpoints
+2. Teste a conexão com o Firebase
+3. Verifique se o CORS está configurado para permitir o domínio do frontend
+
 ## Executando o Projeto
 
 ### Instalação

@@ -1,63 +1,61 @@
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Box, CircularProgress, Center } from '@chakra-ui/react'
 import { Layout } from './presentation/layouts/Layout'
 import { Dashboard } from './presentation/pages/Dashboard'
 import { Profile } from './presentation/pages/Profile'
-import { SocialMedia } from './presentation/pages/SocialMedia'
+import SocialMedia from './presentation/pages/SocialMedia'
 import { Documents } from './presentation/pages/Documents'
 import { Events } from './presentation/pages/Events'
 import { Settings } from './presentation/pages/Settings'
 import { Auth } from './presentation/pages/Auth'
+import { OAuthCallback } from './presentation/pages/OAuthCallback'
 import { useState, useEffect } from 'react'
 import { authService } from './services/api'
+import { userService } from './services/api'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const location = useLocation();
-  const navigate = useNavigate();
 
   const updateAuthState = () => {
     const isAuth = authService.isAuthenticated();
     setIsAuthenticated(isAuth);
-    
-    if (isAuth && location.pathname === '/auth') {
-      navigate('/', { replace: true });
-    } else if (!isAuth && location.pathname !== '/auth') {
-      navigate('/auth', { replace: true });
-    }
-    
     return isAuth;
   };
 
   useEffect(() => {
     const checkAuth = async () => {
       setIsLoading(true);
-      updateAuthState();
-      setIsLoading(false);
+      try {
+        // Verify token and force refresh profile data if authenticated
+        const isAuth = authService.isAuthenticated();
+        setIsAuthenticated(isAuth);
+        
+        // If authenticated, refresh profile data
+        if (isAuth) {
+          try {
+            console.log('Refreshing user profile data...');
+            await userService.getProfile();
+            console.log('Profile data refreshed');
+          } catch (err) {
+            console.error('Error refreshing profile data:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Auth check error:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
     
     checkAuth();
   }, []);
 
   useEffect(() => {
-    if (!isLoading) {
-      setTimeout(() => {
-        updateAuthState();
-      }, 0);
-    }
-  }, [location.pathname, isLoading]);
-
-  useEffect(() => {
     const handleAuthChange = (e) => {
       const { isAuthenticated: newAuthState } = e.detail;
       setIsAuthenticated(newAuthState);
-      
-      if (newAuthState && location.pathname === '/auth') {
-        navigate('/', { replace: true });
-      } else if (!newAuthState && location.pathname !== '/auth') {
-        navigate('/auth', { replace: true });
-      }
     };
     
     const handleStorageChange = () => {
@@ -66,11 +64,7 @@ function App() {
     
     const handleAuthRefresh = () => {
       if (authService.isAuthenticated()) {
-        authService.refreshAuthState().then(isValid => {
-          if (!isValid && location.pathname !== '/auth') {
-            navigate('/auth', { replace: true });
-          }
-        });
+        authService.refreshAuthState();
       }
     };
     
@@ -90,7 +84,7 @@ function App() {
       window.removeEventListener('auth-refresh', handleAuthRefresh);
       clearInterval(verifyInterval);
     };
-  }, [location.pathname, navigate]);
+  }, []);
 
   if (isLoading) {
     return (
@@ -104,8 +98,9 @@ function App() {
     <Box minH="100vh">
       <Routes>
         <Route path="/auth" element={
-          isAuthenticated ? <Navigate to="/" replace /> : <Auth />
+          isAuthenticated ? <Navigate to="/profile" replace /> : <Auth />
         } />
+        <Route path="/oauth/callback" element={<OAuthCallback />} />
         <Route path="*" element={
           isAuthenticated ? (
             <Layout>

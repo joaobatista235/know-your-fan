@@ -36,17 +36,15 @@ export const ProfileAvatar = ({
     color: colorMode === 'dark' ? 'white' : '#141414',
   }
 
-  // Load profile image if not provided as prop
   useEffect(() => {
     const loadProfileImage = async () => {
       if (!src) {
         try {
           const base64Image = await userService.getProfileImage();
+          console.log(base64Image)
           if (base64Image) {
             setLocalSrc(base64Image);
-            // Also pass it to parent component if provided
             if (onImageChange) {
-              // Pass the same base64 string for both parameters for consistency
               onImageChange(base64Image, base64Image);
             }
           }
@@ -97,7 +95,6 @@ export const ProfileAvatar = ({
     reader.onload = (event) => {
       const base64Image = event.target.result;
       setLocalSrc(base64Image);
-      // Pass the base64 data to the parent component
       onImageChange && onImageChange(base64Image, base64Image)
     }
     reader.readAsDataURL(file)

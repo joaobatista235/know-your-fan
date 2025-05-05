@@ -1,0 +1,26 @@
+BACKEND REQUIREMENTS TO FIX USER DATA MISMATCH
+
+We're experiencing an issue where the backend is returning data for the wrong user, likely due to caching or session issues in the Firebase integration. To fix this, please implement the following:
+
+1. Add a new direct endpoint to fetch user by email:
+   - Route: GET /api/users/by-email/:email
+   - This endpoint should DIRECTLY query Firebase for the user with the specific email
+   - It should bypass any caching or session handling and fetch fresh data
+   - It should check request headers for 'X-Force-User-Email' and verify this matches the :email parameter
+   - The route must be protected and only accessible with valid JWT token
+
+2. Modify the existing profile endpoint:
+   - Update /api/users/profile to respect the 'email' query parameter if provided
+   - If an email parameter is present, verify it matches the authenticated user's email
+   - Add a 'forceRefresh' parameter that, when set to 'true', bypasses any caching
+
+3. Add strong cache prevention headers to all user data responses:
+   - Cache-Control: no-cache, no-store, must-revalidate
+   - Pragma: no-cache
+   - Expires: 0
+
+4. Add logging for debugging:
+   - Log when there's a mismatch between requested user and returned user
+   - Include request ID headers ('X-Request-ID') in all logs
+
+This will allow the frontend to explicitly request data for the specific logged-in user, preventing issues where cached data from another user is returned. 

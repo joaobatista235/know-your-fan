@@ -39,6 +39,7 @@ export const Profile = () => {
   const toast = useToast()
   const location = useLocation()
   const [loadingCep, setLoadingCep] = useState(false)
+  const [loadingProfile, setLoadingProfile] = useState(true)
   const [profileImage, setProfileImage] = useState('')
   const [imageFile, setImageFile] = useState(null)
   const [showProfileAlert, setShowProfileAlert] = useState(
@@ -85,33 +86,119 @@ export const Profile = () => {
   }, [setValue]);
 
   useEffect(() => {
-    const userData = authService.getUserData()
-    if (userData) {
-      // Update form with user data
-      const formData = {
-        name: userData.display_name || '',
-        cpf: userData.cpf || '',
-        dateOfBirth: userData.date_of_birth || '',
-        cep: userData.cep || '',
-        street: userData.street || '',
-        number: userData.number || '',
-        complement: userData.complement || '',
-        neighborhood: userData.neighborhood || '',
-        city: userData.city || '',
-        state: userData.state || '',
-        favorite_games: userData.favorite_games || '',
-        favorite_teams: userData.favorite_teams || '',
-        recent_events: userData.recent_events || '',
+    const loadUserData = async () => {
+      setLoadingProfile(true);
+      
+      // Obter o email do usuário atual (fonte de verdade)
+      const currentUserEmail = localStorage.getItem('currentUserEmail');
+      
+      if (!currentUserEmail) {
+        toast({
+          title: 'Erro de autenticação',
+          description: 'Informações de usuário incompletas. Por favor, faça login novamente.',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+        setTimeout(() => authService.logout(), 2000);
+        return;
       }
       
-      reset(formData)
-      
-      // Set profile image if it exists
-      if (userData.profileImage) {
-        setProfileImage(userData.profileImage)
+      try {
+        const userData = await userService.getProfile();
+        
+        if (userData) {
+          const formData = {
+            name: userData.display_name || '',
+            cpf: userData.cpf || '',
+            dateOfBirth: userData.date_of_birth || '',
+            cep: userData.cep || '',
+            street: userData.street || '',
+            number: userData.number || '',
+            complement: userData.complement || '',
+            neighborhood: userData.neighborhood || '',
+            city: userData.city || '',
+            state: userData.state || '',
+            favoriteGames: userData.favorite_games || '',
+            favoriteTeams: userData.favorite_teams || '',
+            recentEvents: userData.recent_events || '',
+          };
+          
+          reset(formData);
+          
+          if (userData.profileImage) {
+            setProfileImage(userData.profileImage);
+          } else if (userData.profile_image) {
+            setProfileImage(userData.profile_image);
+          } else if (userData.has_profile_image) {
+            // Tentativa 2: Buscar a imagem do perfil através do serviço dedicado
+            try {
+              const imageData = await userService.getProfileImage();
+              if (imageData) {
+                setProfileImage(imageData);
+              }
+            } catch (error) {
+              console.error("Error loading profile image:", error);
+              
+              // Tentativa 3: Verificar se temos dados em localStorage
+              try {
+                const storedUserData = JSON.parse(localStorage.getItem('userData') || '{}');
+                if (storedUserData.profile_image) {
+                  setProfileImage(storedUserData.profile_image);
+                }
+              } catch (e) {
+                console.error("Error loading profile image from localStorage:", e);
+              }
+            }
+          }
+          
+          if (userData.display_name && userData.cpf) {
+            authService.setProfileComplete(true);
+          }
+        }
+      } catch {
+        toast({
+          title: 'Erro ao carregar perfil',
+          description: 'Não foi possível carregar seus dados. Por favor, complete seu perfil.',
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+        });
+        
+        // Usar dados do usuário já armazenados no localStorage como fallback
+        const storedData = localStorage.getItem('userData');
+        if (storedData) {
+          try {
+            const userData = JSON.parse(storedData);
+            
+            const formData = {
+              name: userData.display_name || '',
+              cpf: userData.cpf || '',
+              dateOfBirth: userData.date_of_birth || '',
+              cep: userData.cep || '',
+              street: userData.street || '',
+              number: userData.number || '',
+              complement: userData.complement || '',
+              neighborhood: userData.neighborhood || '',
+              city: userData.city || '',
+              state: userData.state || '',
+              favoriteGames: userData.favorite_games || '',
+              favoriteTeams: userData.favorite_teams || '',
+              recentEvents: userData.recent_events || '',
+            };
+            
+            reset(formData);
+          } catch {
+            // Erro ao analisar dados armazenados - continuar com formulário vazio
+          }
+        }
+      } finally {
+        setLoadingProfile(false);
       }
-    }
-  }, [updateFormValues, reset])
+    };
+    
+    loadUserData();
+  }, [reset, toast, updateFormValues])
 
   const handleCepSearch = useCallback(async (cepValue) => {
     if (!cepValue || cepValue.length < 8) return;
@@ -162,29 +249,22 @@ export const Profile = () => {
   };
 
   const handleProfileImageChange = useCallback((image, file) => {
-    setProfileImage(image)
-    setImageFile(file)
-  }, [])
+    setProfileImage(image);
+    setImageFile(file);
+    
+    // Também atualizar no localStorage para garantir consistência
+    try {
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      userData.profile_image = image;
+      userData.has_profile_image = true;
+      localStorage.setItem('userData', JSON.stringify(userData));
+    } catch (e) {
+      console.error("Error updating profile image in localStorage:", e);
+    }
+  }, []);
 
   const onSubmit = async (formData) => {
     try {
-      let imageData = null;
-      if (imageFile) {
-        try {
-          // Use the base64 image data
-          imageData = imageFile;
-        } catch (imageError) {
-          toast({
-            title: 'Erro ao processar imagem',
-            description: 'Não foi possível processar sua foto de perfil, mas seus dados serão salvos.',
-            status: 'warning',
-            duration: 5000,
-            isClosable: true,
-          });
-          console.error('Erro ao processar imagem:', imageError);
-        }
-      }
-
       const profileData = {
         display_name: formData.name,
         cpf: removeNonDigits(formData.cpf),
@@ -199,20 +279,27 @@ export const Profile = () => {
         favorite_games: formData.favoriteGames,
         favorite_teams: formData.favoriteTeams,
         recent_events: formData.recentEvents,
-        profileImage: imageData,
+      };
+
+      // Adicionar imagem apenas se existir um arquivo de imagem
+      if (imageFile) {
+        profileData.profileImage = imageFile;
       }
 
-      // Remove undefined values
+      // Remover propriedades undefined
       Object.keys(profileData).forEach(key => 
         profileData[key] === undefined && delete profileData[key]
       );
 
       const response = await userService.updateProfile(profileData);
 
-      // If user has a profile image, store it locally
-      if (response?.user?.has_profile_image && imageData) {
-        // The image is already in profileImage state
-        setProfileImage(imageData);
+      // Atualizar a imagem exibida com a resposta do servidor
+      if (response?.user?.has_profile_image && imageFile) {
+        // A imagem já está definida em profileImage
+        // Verificar se a resposta inclui a imagem diretamente
+        if (response.user.profile_image) {
+          setProfileImage(response.user.profile_image);
+        }
       }
 
       toast({
@@ -221,9 +308,9 @@ export const Profile = () => {
         status: 'success',
         duration: 5000,
         isClosable: true,
-      })
+      });
 
-      setShowProfileAlert(false)
+      setShowProfileAlert(false);
     } catch (error) {
       toast({
         title: 'Erro ao atualizar perfil',
@@ -231,9 +318,9 @@ export const Profile = () => {
         status: 'error',
         duration: 5000,
         isClosable: true,
-      })
+      });
     }
-  }
+  };
 
   return (
     <Box maxWidth="800px" mx="auto" py={8}>
@@ -269,192 +356,199 @@ export const Profile = () => {
         </Alert>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <VStack spacing={6} align="stretch">
-          {/* Profile Image */}
-          <FormCard
-            title="Foto de Perfil"
-            icon={FiImage}
-          >
-            <Flex justifyContent="center" py={4}>
-              <ProfileAvatar
-                src={profileImage}
-                name={watch('name')}
-                onImageChange={handleProfileImageChange}
-              />
-            </Flex>
-          </FormCard>
-
-          {/* Personal Information */}
-          <FormCard
-            title="Informações Pessoais"
-            icon={FiUser}
-          >
-            <Box display="grid" gridTemplateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
-              <FormField
-                name="name"
-                label="Nome Completo"
-                control={control}
-                placeholder="Digite seu nome completo"
-                isRequired
-              />
-
-              {/* Campo CPF com máscara aplicada diretamente */}
-              <FormControl isInvalid={!!errors.cpf} isRequired mb={4}>
-                <FormLabel htmlFor="cpf">CPF</FormLabel>
-                <Input
-                  id="cpf"
-                  type="text"
-                  placeholder="Digite seu CPF"
-                  value={cpfValue || ''}
-                  onChange={handleCpfChange}
-                  h="56px"
-                  data-lpignore="true"
-                  autoCorrect="off"
-                  spellCheck="false"
-                  {...register('cpf')}
+      {loadingProfile ? (
+        <Flex justifyContent="center" alignItems="center" minHeight="300px" direction="column">
+          <Spinner size="xl" color="brand.primary" thickness="4px" mb={4} />
+          <Box fontWeight="medium">Carregando dados do perfil...</Box>
+        </Flex>
+      ) : (
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <VStack spacing={6} align="stretch">
+            {/* Profile Image */}
+            <FormCard
+              title="Foto de Perfil"
+              icon={FiImage}
+            >
+              <Flex justifyContent="center" py={4}>
+                <ProfileAvatar
+                  src={profileImage}
+                  name={watch('name')}
+                  onImageChange={handleProfileImageChange}
                 />
-                {errors.cpf && (
-                  <FormErrorMessage>
-                    {errors.cpf.message}
-                  </FormErrorMessage>
-                )}
-              </FormControl>
+              </Flex>
+            </FormCard>
 
-              <FormField
-                name="dateOfBirth"
-                label="Data de Nascimento"
-                control={control}
-                type="date"
-              />
-            </Box>
-          </FormCard>
+            {/* Personal Information */}
+            <FormCard
+              title="Informações Pessoais"
+              icon={FiUser}
+            >
+              <Box display="grid" gridTemplateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
+                <FormField
+                  name="name"
+                  label="Nome Completo"
+                  control={control}
+                  placeholder="Digite seu nome completo"
+                  isRequired
+                />
 
-          {/* Address */}
-          <FormCard
-            title="Endereço"
-            icon={FiMapPin}
-          >
-            <Box display="grid" gridTemplateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
-              {/* Campo CEP com máscara aplicada diretamente */}
-              <FormControl isInvalid={!!errors.cep} isRequired mb={4}>
-                <FormLabel htmlFor="cep">CEP</FormLabel>
-                <InputGroup>
+                {/* Campo CPF com máscara aplicada diretamente */}
+                <FormControl isInvalid={!!errors.cpf} isRequired mb={4}>
+                  <FormLabel htmlFor="cpf">CPF</FormLabel>
                   <Input
-                    id="cep"
+                    id="cpf"
                     type="text"
-                    placeholder="Digite seu CEP"
-                    value={cepValue || ''}
-                    onChange={handleCepChange}
+                    placeholder="Digite seu CPF"
+                    value={cpfValue || ''}
+                    onChange={handleCpfChange}
                     h="56px"
                     data-lpignore="true"
                     autoCorrect="off"
                     spellCheck="false"
-                    {...register('cep')}
+                    {...register('cpf')}
                   />
-                  {loadingCep && (
-                    <InputRightElement h="56px" pr={4}>
-                      <Spinner size="sm" color="brand.primary" />
-                    </InputRightElement>
+                  {errors.cpf && (
+                    <FormErrorMessage>
+                      {errors.cpf.message}
+                    </FormErrorMessage>
                   )}
-                </InputGroup>
-                {errors.cep && (
-                  <FormErrorMessage>
-                    {errors.cep.message}
-                  </FormErrorMessage>
-                )}
-              </FormControl>
+                </FormControl>
 
-              <FormField
-                name="street"
-                label="Rua"
-                control={control}
-                placeholder="Nome da rua"
-              />
+                <FormField
+                  name="dateOfBirth"
+                  label="Data de Nascimento"
+                  control={control}
+                  type="date"
+                />
+              </Box>
+            </FormCard>
 
-              <FormField
-                name="number"
-                label="Número"
-                control={control}
-                placeholder="Número"
-              />
-
-              <FormField
-                name="complement"
-                label="Complemento"
-                control={control}
-                placeholder="Apto, bloco, etc."
-              />
-
-              <FormField
-                name="neighborhood"
-                label="Bairro"
-                control={control}
-                placeholder="Bairro"
-              />
-
-              <FormField
-                name="city"
-                label="Cidade"
-                control={control}
-                placeholder="Cidade"
-              />
-
-              <FormField
-                name="state"
-                label="Estado"
-                control={control}
-                placeholder="Estado"
-              />
-            </Box>
-          </FormCard>
-
-          {/* Preferences */}
-          <FormCard
-            title="Preferências de Fã"
-            icon={FiTarget}
-          >
-            <Box display="grid" gridTemplateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
-              <FormField
-                name="favoriteGames"
-                label="Jogos Favoritos"
-                control={control}
-                placeholder="Ex: CS:GO, Valorant, League of Legends"
-              />
-
-              <FormField
-                name="favoriteTeams"
-                label="Times Favoritos da FURIA"
-                control={control}
-                placeholder="Ex: FURIA CS:GO, FURIA Valorant"
-              />
-
-              <FormField
-                name="recentEvents"
-                label="Eventos Recentes"
-                control={control}
-                placeholder="Eventos que você participou recentemente"
-              />
-            </Box>
-          </FormCard>
-
-          <Divider borderColor={colorMode === 'dark' ? 'whiteAlpha.100' : 'gray.200'} />
-
-          {/* Action Buttons */}
-          <Box display="flex" justifyContent="flex-end" gap={4}>
-            <Button variant="ghost">Cancelar</Button>
-            <Button
-              variant="primary"
-              type="submit"
-              isLoading={isSubmitting}
-              loadingText="Salvando..."
-              leftIcon={<FiSave />}
+            {/* Address */}
+            <FormCard
+              title="Endereço"
+              icon={FiMapPin}
             >
-              Salvar Alterações
-            </Button>
-          </Box>
-        </VStack>
-      </form>
+              <Box display="grid" gridTemplateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
+                {/* Campo CEP com máscara aplicada diretamente */}
+                <FormControl isInvalid={!!errors.cep} isRequired mb={4}>
+                  <FormLabel htmlFor="cep">CEP</FormLabel>
+                  <InputGroup>
+                    <Input
+                      id="cep"
+                      type="text"
+                      placeholder="Digite seu CEP"
+                      value={cepValue || ''}
+                      onChange={handleCepChange}
+                      h="56px"
+                      data-lpignore="true"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      {...register('cep')}
+                    />
+                    {loadingCep && (
+                      <InputRightElement h="56px" pr={4}>
+                        <Spinner size="sm" color="brand.primary" />
+                      </InputRightElement>
+                    )}
+                  </InputGroup>
+                  {errors.cep && (
+                    <FormErrorMessage>
+                      {errors.cep.message}
+                    </FormErrorMessage>
+                  )}
+                </FormControl>
+
+                <FormField
+                  name="street"
+                  label="Rua"
+                  control={control}
+                  placeholder="Nome da rua"
+                />
+
+                <FormField
+                  name="number"
+                  label="Número"
+                  control={control}
+                  placeholder="Número"
+                />
+
+                <FormField
+                  name="complement"
+                  label="Complemento"
+                  control={control}
+                  placeholder="Apto, bloco, etc."
+                />
+
+                <FormField
+                  name="neighborhood"
+                  label="Bairro"
+                  control={control}
+                  placeholder="Bairro"
+                />
+
+                <FormField
+                  name="city"
+                  label="Cidade"
+                  control={control}
+                  placeholder="Cidade"
+                />
+
+                <FormField
+                  name="state"
+                  label="Estado"
+                  control={control}
+                  placeholder="Estado"
+                />
+              </Box>
+            </FormCard>
+
+            {/* Preferences */}
+            <FormCard
+              title="Preferências de Fã"
+              icon={FiTarget}
+            >
+              <Box display="grid" gridTemplateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
+                <FormField
+                  name="favoriteGames"
+                  label="Jogos Favoritos"
+                  control={control}
+                  placeholder="Ex: CS:GO, Valorant, League of Legends"
+                />
+
+                <FormField
+                  name="favoriteTeams"
+                  label="Times Favoritos da FURIA"
+                  control={control}
+                  placeholder="Ex: FURIA CS:GO, FURIA Valorant"
+                />
+
+                <FormField
+                  name="recentEvents"
+                  label="Eventos Recentes"
+                  control={control}
+                  placeholder="Eventos que você participou recentemente"
+                />
+              </Box>
+            </FormCard>
+
+            <Divider borderColor={colorMode === 'dark' ? 'whiteAlpha.100' : 'gray.200'} />
+
+            {/* Action Buttons */}
+            <Box display="flex" justifyContent="flex-end" gap={4}>
+              <Button variant="ghost">Cancelar</Button>
+              <Button
+                variant="primary"
+                type="submit"
+                isLoading={isSubmitting}
+                loadingText="Salvando..."
+                leftIcon={<FiSave />}
+              >
+                Salvar Alterações
+              </Button>
+            </Box>
+          </VStack>
+        </form>
+      )}
     </Box>
   )
 } 
