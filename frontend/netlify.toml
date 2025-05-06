@@ -1,11 +1,24 @@
+# Configurações de Build
 [build]
   command = "npm run build"
   publish = "dist"
 
-[context.production.environment]
-  VITE_API_URL = "https://seu-backend-api.exemplo.com"
+# Variáveis de ambiente em produção
+[build.environment]
+  VITE_API_URL = "https://know-your-fan-api-45996d905c4a.herokuapp.com"
 
+# Redirecionamentos para SPA
 [[redirects]]
   from = "/*"
   to = "/index.html"
-  status = 200 
+  status = 200
+
+# Headers para segurança e CORS
+[[headers]]
+  for = "/*"
+    [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Content-Security-Policy = "default-src 'self'; connect-src 'self' https://know-your-fan-api-45996d905c4a.herokuapp.com https://*.googleapis.com; img-src 'self' data: https: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:;"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer-when-downgrade" 
